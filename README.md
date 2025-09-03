@@ -1,6 +1,6 @@
 # LLM Fine-tuning Pipeline
 
-A complete pipeline for fine-tuning Language Models on German text using [Aleph Alpha's synthetic dataset](https://huggingface.co/datasets/Aleph-Alpha/Aleph-Alpha-GermanWeb). Optimized for **Apple M1 Macs** with memory-efficient training.
+A complete pipeline for fine-tuning Language Models on German text using [Aleph Alpha's synthetic dataset](https://huggingface.co/datasets/Aleph-Alpha/Aleph-Alpha-GermanWeb). Optimized for **Apple M1 Macs** with memory-efficient training and **MLflow experiment tracking**.
 
 ## What This Does
 
@@ -8,6 +8,7 @@ A complete pipeline for fine-tuning Language Models on German text using [Aleph 
 - Takes pre-trained models like `microsoft/DialoGPT-small` or `gpt2`
 - Fine-tunes them on German synthetic text data
 - Uses **LoRA (Low-Rank Adaptation)** for efficient training on M1 Macs
+- **Tracks experiments with MLflow** for reproducibility and comparison
 - Produces models that can generate German text in different styles
 
 **The model learns to predict the next word** in German text, giving it capabilities like:
@@ -61,16 +62,34 @@ Start with smaller samples for testing:
 uv run src/data_preprocessing/generate_sample_dataset.py
 ```
 
-### 4. Training
+### 4. Training with MLflow Tracking
+
 ```bash
-# Train on 1000 samples (10-15 minutes)
+# Train on 1000 samples with MLflow tracking (10-15 minutes)
 uv run src/llm_pipeline.py \
   --data data/sample/sample_1000.parquet \
   --model microsoft/DialoGPT-small \
   --epochs 2
+
+# Train without MLflow tracking
+uv run src/llm_pipeline.py \
+  --data data/sample/sample_1000.parquet \
+  --model microsoft/DialoGPT-small \
+  --epochs 2 \
+  --no_mlflow
 ```
 
-### 5. Testing the model
+### 5. View Experiments in MLflow
+
+```bash
+# Start MLflow UI (accessible at http://localhost:5000)
+uv run mlflow ui --backend-store-uri experiments/mlruns
+
+# Or specify a different port
+uv run mlflow ui --backend-store-uri experiments/mlruns --port 5000
+```
+
+### 6. Testing the model
 ```bash
 # Test the trained model
 uv run src/models/test_llm.py \
@@ -130,6 +149,24 @@ uv run src/llm_pipeline.py \
 - **LoRA**: Enabled (memory efficient fine-tuning)
 
 
+## MLflow Experiment Tracking
+
+### Experiment Organization
+
+MLflow automatically organizes experiments:
+
+```
+experiments/mlruns/
+├── german_llm_finetuning/          # Experiment name
+│   ├── run_20240903_143022/        # Individual training runs
+│   │   ├── params/                 # Training parameters
+│   │   ├── metrics/                # Training metrics
+│   │   ├── artifacts/              # Model files & logs
+│   │   └── meta.yaml              # Run metadata
+│   └── run_20240903_145511/        # Another training run
+└── .../
+```
+
 ## Directory Structure
 
 ```
@@ -141,7 +178,8 @@ llm-finetuning/
 │   │   ├── llm_trainer.py                # Core LLM training logic
 │   │   └── test_llm.py                   # Model testing & inference
 │   ├── utils/
-│   │   └── helpers.py                    # Utility functions
+│   │   ├── helpers.py                    # Utility functions
+│   │   └── mlflow_utilities.py           # MLflow tracking utilities
 │   ├── llm_pipeline.py                   # Main training pipeline
 │   └── constants.py                      # Project-wide constants
 ├── configs/
@@ -149,7 +187,8 @@ llm-finetuning/
 ├── data/
 │   └── sample/                           # Generated sample datasets
 ├── outputs/                              # Saved trained models
-├── experiments/                          # MLflow experiments (future)
+├── experiments/                          # MLflow experiments & tracking
+│   └── mlruns/                           # MLflow run data & artifacts
 ├── tests/                                # Unit tests
 └── pyproject.toml                        # Dependencies & tool config
 ```
@@ -246,19 +285,39 @@ uv run src/models/test_llm.py --model_path outputs/your_model --mode info
 
 ## Next Steps
 
-1. **Add MLflow** for experiment tracking
-2. **Deploy the model** for inference
+1. **Experiment with hyperparameters** using MLflow tracking
+2. **Compare different models** and training configurations
+3. **Deploy the model** for inference
+4. **Scale up training** with larger datasets
 
 ## Understanding the Output
 
 When training completes, you'll see:
 
 ```
-TRAINING COMPLETE
-Training samples: 1000
-Training time: 15.2 minutes
-Model saved to: outputs/german_llm_microsoft_DialoGPT-small
-Final loss: 2.34
+======================================================================
+LLM TRAINING PIPELINE SUMMARY
+======================================================================
+Status: SUCCESS
+Model: microsoft/DialoGPT-small
+Training Samples: 400
+Final Loss: 8.3107
+Total Time: 425.3s
+Model Path: ./outputs/german_llm_microsoft_DialoGPT-small
+
+Next Steps:
+   1. Test your model:
+      uv run src/models/test_llm.py --model_path ./outputs/your_model
+   2. View MLflow experiments:
+      uv run mlflow ui --backend-store-uri experiments/mlruns
+   3. Try different prompts and see how it performs!
+======================================================================
 ```
 
-The trained model can then generate German text in the style of the training data!
+**MLflow automatically tracks:**
+- All training parameters and hyperparameters
+- Training and validation loss over time
+- Model artifacts and metadata
+- Training duration and system metrics
+
+Access the **MLflow UI** to compare runs and analyze training performance!
