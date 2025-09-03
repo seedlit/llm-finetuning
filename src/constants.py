@@ -1,5 +1,5 @@
 # Data paths
-PARQUET_DATA_PATH = "./alephalpha_data/synthetic/part.1.parquet"
+PARQUET_DATA_PATH = "/Users/namanjain/Desktop/personal/side_projects/alephalpha_data/synthetic/part.1.parquet"
 
 # Project directories
 PROJECT_ROOT = "./llm-finetuning"
@@ -29,7 +29,7 @@ DEFAULT_SAMPLE_SIZES = [100, 500, 1000, 5000]
 MLFLOW_TRACKING_URI = f"{EXPERIMENTS_DIR}/mlruns"
 EXPERIMENT_NAME = "aleph_alpha_german_pipeline"
 
-SAMPLE_DATA_FORMATS = ["parquet", "csv"]
+SAMPLE_DATA_FORMATS = ["parquet"]
 
 # Default model configurations for M1 Mac
 RECOMMENDED_MODELS = {

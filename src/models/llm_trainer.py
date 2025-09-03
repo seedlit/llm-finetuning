@@ -13,6 +13,7 @@ sys.path.append(
 from pathlib import Path
 
 import pandas as pd
+import time
 import torch
 from datasets import Dataset
 from peft import LoraConfig, TaskType, get_peft_model
@@ -28,6 +29,7 @@ from configs.config import GENERATION_CONFIG, LLM_CONFIG, TRAINING_CONFIG
 from src import constants
 from src.constants import RANDOM_SEED, TRAIN_TEST_SPLIT_RATIO
 from src.utils.helpers import save_metadata, setup_logging
+from src.utils.mlflow_utilities import MLflowTracker
 
 logger = setup_logging()
 
@@ -40,6 +42,7 @@ class GermanLLMTrainer:
         model_name: str = LLM_CONFIG["default_model"],
         max_length: int = LLM_CONFIG["max_length"],
         use_lora: bool = LLM_CONFIG["use_lora"],
+        use_mlflow: bool = True,
     ):
         """
         Initialize the LLM trainer.
@@ -48,10 +51,13 @@ class GermanLLMTrainer:
             model_name: HuggingFace model name (small models for M1 Mac)
             max_length: Maximum sequence length
             use_lora: Whether to use LoRA for efficient fine-tuning
+            use_mlflow: Whether to enable MLflow experiment tracking
         """
         self.model_name = model_name
         self.max_length = max_length
         self.use_lora = use_lora
+        self.use_mlflow = use_mlflow
+        self.mlflow_tracker = MLflowTracker() if use_mlflow else None
 
         # Check device - prioritize MPS for M1 Mac
         if torch.backends.mps.is_available():
@@ -212,6 +218,25 @@ class GermanLLMTrainer:
         """
         logger.info("Starting training")
 
+        # Start MLflow run if enabled
+        mlflow_run = None
+        if self.mlflow_tracker:
+            mlflow_run = self.mlflow_tracker.start_run()
+
+            # Log parameters
+            training_params = {
+                "model_name": self.model_name,
+                "num_epochs": num_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "warmup_steps": warmup_steps,
+                "max_length": self.max_length,
+                "use_lora": self.use_lora,
+                "save_steps": save_steps,
+                "logging_steps": logging_steps,
+            }
+            self.mlflow_tracker.log_params(training_params)
+
         # Split dataset (80/20 train/val)
         dataset = dataset.train_test_split(
             test_size=TRAIN_TEST_SPLIT_RATIO, seed=RANDOM_SEED
@@ -221,6 +246,14 @@ class GermanLLMTrainer:
 
         logger.info(f"Training samples: {len(train_dataset)}")
         logger.info(f"Validation samples: {len(eval_dataset)}")
+
+        # Update MLflow parameters with dataset info
+        if self.mlflow_tracker:
+            dataset_params = {
+                "train_samples": len(train_dataset),
+                "eval_samples": len(eval_dataset),
+            }
+            self.mlflow_tracker.log_params(dataset_params)
 
         # Training arguments optimized for M1 Mac
         training_args = TrainingArguments(
@@ -267,7 +300,9 @@ class GermanLLMTrainer:
 
         # Train
         logger.info("Starting training...")
+        start_time = time.time()
         train_result = self.trainer.train()
+        training_time = time.time() - start_time
 
         # Save model
         logger.info("Saving model...")
@@ -279,11 +314,28 @@ class GermanLLMTrainer:
             self.model.save_pretrained(output_dir)
             logger.info("LoRA adapter saved")
 
+        # Get evaluation results
+        eval_results = self.trainer.evaluate()
+
+        # Log metrics to MLflow
+        if self.mlflow_tracker:
+            metrics = {
+                "final_train_loss": train_result.metrics.get("train_loss", 0),
+                "final_eval_loss": eval_results.get("eval_loss", 0),
+                "training_time_seconds": training_time,
+                "training_time_minutes": training_time / 60,
+            }
+            self.mlflow_tracker.log_metrics(metrics)
+
+            # Log model artifacts
+            self.mlflow_tracker.log_model(output_dir)
+
         # Training statistics
         training_stats = {
             "total_flos": train_result.metrics.get("train_runtime", 0),
             "train_loss": train_result.metrics.get("train_loss", 0),
-            "eval_loss": self.trainer.evaluate().get("eval_loss", 0),
+            "eval_loss": eval_results.get("eval_loss", 0),
+            "training_time": training_time,
             "num_epochs": num_epochs,
             "num_train_samples": len(train_dataset),
             "num_eval_samples": len(eval_dataset),
@@ -291,6 +343,10 @@ class GermanLLMTrainer:
             "use_lora": self.use_lora,
             "device": self.device,
         }
+
+        # End MLflow run
+        if self.mlflow_tracker and mlflow_run:
+            self.mlflow_tracker.end_run()
 
         logger.info("Training completed!")
         logger.info(f"Final train loss: {training_stats['train_loss']:.4f}")
@@ -350,6 +406,7 @@ def train_german_llm(
     model_name: str = LLM_CONFIG["default_model"],
     output_dir: str = None,
     max_samples: int = None,
+    use_mlflow: bool = True,
     **training_kwargs,
 ) -> dict:
     """
@@ -360,6 +417,7 @@ def train_german_llm(
         model_name: HuggingFace model to fine-tune
         output_dir: Where to save the trained model
         max_samples: Maximum samples to use (None for all)
+        use_mlflow: Whether to enable MLflow experiment tracking
         **training_kwargs: Additional training arguments
 
     Returns:
@@ -383,7 +441,7 @@ def train_german_llm(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Initialize trainer
-    trainer = GermanLLMTrainer(model_name=model_name)
+    trainer = GermanLLMTrainer(model_name=model_name, use_mlflow=use_mlflow)
     trainer.load_model_and_tokenizer()
 
     # Prepare dataset
@@ -452,6 +510,11 @@ if __name__ == "__main__":
         default=TRAINING_CONFIG["learning_rate"],
         help="Learning rate",
     )
+    parser.add_argument(
+        "--no_mlflow",
+        action="store_true",
+        help="Disable MLflow experiment tracking",
+    )
 
     args = parser.parse_args()
 
@@ -464,6 +527,7 @@ if __name__ == "__main__":
         num_epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        use_mlflow=not args.no_mlflow,
     )
 
     print("\n" + "=" * 60)

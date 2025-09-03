@@ -29,6 +29,7 @@ class LLMPipeline:
         num_epochs: int = TRAINING_CONFIG["num_epochs"],
         batch_size: int = TRAINING_CONFIG["batch_size"],
         learning_rate: float = TRAINING_CONFIG["learning_rate"],
+        use_mlflow: bool = True,
     ):
         """
         Initialize LLM pipeline.
@@ -40,6 +41,7 @@ class LLMPipeline:
             num_epochs: Number of training epochs
             batch_size: Training batch size
             learning_rate: Learning rate
+            use_mlflow: Whether to enable MLflow experiment tracking
         """
         self.data_path = data_path
         self.model_name = model_name
@@ -47,6 +49,7 @@ class LLMPipeline:
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.use_mlflow = use_mlflow
         self.start_time = time.time()
 
     def run(self) -> dict[str, any]:
@@ -58,6 +61,9 @@ class LLMPipeline:
         logger.info(f"   Epochs: {self.num_epochs}")
         logger.info(f"   Batch Size: {self.batch_size}")
         logger.info(f"   Learning Rate: {self.learning_rate}")
+        logger.info(
+            f"   MLflow Tracking: {'Enabled' if self.use_mlflow else 'Disabled'}"
+        )
 
         try:
             # Train model
@@ -68,6 +74,7 @@ class LLMPipeline:
                 num_epochs=self.num_epochs,
                 batch_size=self.batch_size,
                 learning_rate=self.learning_rate,
+                use_mlflow=self.use_mlflow,
             )
 
             # Calculate total time
@@ -130,6 +137,11 @@ def main():
         default=TRAINING_CONFIG["learning_rate"],
         help="Learning rate",
     )
+    parser.add_argument(
+        "--no_mlflow",
+        action="store_true",
+        help="Disable MLflow experiment tracking",
+    )
 
     args = parser.parse_args()
 
@@ -171,6 +183,7 @@ def main():
         num_epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        use_mlflow=not args.no_mlflow,
     )
 
     results = pipeline.run()
@@ -194,7 +207,10 @@ def main():
         print(
             f"      uv run src/models/test_llm.py --model_path {results['model_path']}"
         )
-        print("   2. Try different prompts and see how it performs!")
+        if not args.no_mlflow:
+            print("   2. View MLflow experiments:")
+            print("      uv run mlflow ui --backend-store-uri experiments/mlruns")
+        print("   3. Try different prompts and see how it performs!")
 
     else:
         print("Status: FAILED")

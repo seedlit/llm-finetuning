@@ -2,6 +2,8 @@
 Configuration settings for the Aleph Alpha German pipeline.
 """
 
+import os
+
 # Sampling configuration
 SAMPLING_CONFIG = {
     "default_sample_size": 1000,
@@ -72,10 +74,12 @@ MODEL_CONFIG = {
 
 # MLflow configuration
 MLFLOW_CONFIG = {
-    "experiment_name": "aleph_alpha_german_pipeline",
-    "run_name_prefix": "run",
+    "experiment_name": "german_llm_finetuning",
+    "tracking_uri": f"file://{os.path.abspath('experiments/mlruns')}",
+    "run_name_prefix": "german_llm",
     "log_artifacts": True,
     "log_model": True,
+    "log_system_metrics": True,
 }
 
 # Logging configuration
