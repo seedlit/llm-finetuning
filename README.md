@@ -36,7 +36,7 @@ Using **Aleph Alpha's German synthetic dataset** with 5 prompt types:
 
 ```bash
 # Clone and setup
-git clone <your-repo>
+git clone llm-finetuning
 cd llm-finetuning
 
 # Install dependencies with uv (includes dev tools)
